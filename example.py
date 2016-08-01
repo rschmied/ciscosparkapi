@@ -33,6 +33,13 @@ spark.session.ratelimit_callback = cb
 
 # create a lot of users in the room from above
 for m in 100 * ['me@home.net', 'user@somewhere.com', 'santa@northpole.org']:
-    spark.memberships.create(room.id, personEmail=m)
+    try:
+        spark.memberships.create(room.id, personEmail=m)
+    except ciscosparkapi.exceptions.SparkApiError, e:
+        if spark.session.last_response.status_code == 409:
+            print('user already in room!')
+        else:
+            print(e)
+            break
     print('.')
 
