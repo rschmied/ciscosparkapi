@@ -4,15 +4,23 @@
 from ciscosparkapi.exceptions import ciscosparkapiException
 from ciscosparkapi.helperfunc import utf8
 from ciscosparkapi.restsession import RestSession
+from ciscosparkapi.api.sparkobject import SparkBaseObject
 
 
-class Room(object):
-    """Spark Room object wrapper class."""
+_ATTRIBUTES = ['id', 'created', 'type', 'title',
+               'isLocked', 'lastActivity', 'teamId']
+_DOCSTRINGS = ['Room ID', 'date created, ISO8601', '"group" or "direct"',
+               'title of the room', 'true or false', 'date of last activity, ISO8601',
+               'team ID of the room']
 
-    def __init__(self, json):
-        assert isinstance(json, dict)
-        super(Room, self).__init__()
-        self.json = json
+
+class Room(SparkBaseObject):
+    """Cisco Spark Room Object"""
+
+    _API = dict(zip(_ATTRIBUTES, _DOCSTRINGS))
+
+    def __init__(self, arg=None):
+        super(Room, self).__init__(arg)
 
 
 class RoomsAPI(object):
@@ -53,11 +61,13 @@ class RoomsAPI(object):
         # Process args
         assert max is None or isinstance(max, int)
         params = {}
-        if max: params[u'max'] = max
+        if max:
+            params[u'max'] = max
         # Process query_param keyword arguments
         if query_params:
             for param, value in query_params.items():
-                if isinstance(value, basestring): value = utf8(value)
+                if isinstance(value, basestring):
+                    value = utf8(value)
                 params[utf8(param)] = value
         # API request - get items
         items = self.session.get_items('rooms', params=params)
@@ -82,7 +92,8 @@ class RoomsAPI(object):
         assert teamId is None or isinstance(teamId, basestring)
         post_data = {}
         post_data[u'title'] = utf8(title)
-        if teamId: post_data[u'teamId'] = utf8(teamId)
+        if teamId:
+            post_data[u'teamId'] = utf8(teamId)
         # API request
         json_room_obj = self.session.post('rooms', json=post_data)
         # Return a Room object created from the response JSON data
@@ -100,7 +111,7 @@ class RoomsAPI(object):
         # Process args
         assert isinstance(roomId, basestring)
         # API request
-        json_room_obj = self.session.get('rooms/'+roomId)
+        json_room_obj = self.session.get('rooms/' + roomId)
         # Return a Room object created from the response JSON data
         return Room(json_room_obj)
 
@@ -129,7 +140,8 @@ class RoomsAPI(object):
             raise ciscosparkapiException(error_message)
         put_data = {}
         for param, value in update_attributes.items():
-            if isinstance(value, basestring): value = utf8(value)
+            if isinstance(value, basestring):
+                value = utf8(value)
             put_data[utf8(param)] = value
         # API request
         json_room_obj = self.session.post('rooms', json=put_data)
@@ -148,4 +160,4 @@ class RoomsAPI(object):
         # Process args
         assert isinstance(roomId, basestring)
         # API request
-        self.session.delete('rooms/'+roomId)
+        self.session.delete('rooms/' + roomId)
