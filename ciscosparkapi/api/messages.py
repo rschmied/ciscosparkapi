@@ -1,6 +1,6 @@
 """Spark - Messages API - wrapper classes."""
 
-
+from collections import OrderedDict
 from ciscosparkapi.exceptions import ciscosparkapiException
 from ciscosparkapi.helperfunc import utf8, sparkISO8601
 from ciscosparkapi.restsession import RestSession
@@ -17,7 +17,7 @@ _DOCSTRINGS = ['Message ID', 'date created, ISO8601', 'Room ID', 'group or direc
 class Message(SparkBaseObject):
     """Cisco Spark Message Object"""
 
-    _API = dict(zip(_ATTRIBUTES, _DOCSTRINGS))
+    _API = OrderedDict(zip(_ATTRIBUTES, _DOCSTRINGS))
 
     def __init__(self, arg=None):
         super(Message, self).__init__(arg)

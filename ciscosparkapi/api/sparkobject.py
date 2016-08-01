@@ -1,5 +1,5 @@
 import json
-
+from collections import OrderedDict
 
 def _priv(item):
     return '_' + item
@@ -45,7 +45,7 @@ class SparkBaseObject(object):
 
     def dumps(self):
         """ dumps the Spark object as JSON"""
-        data = dict()
+        data = OrderedDict()
         for item in self._API.keys():
             d = getattr(self, _priv(item), None)
             if d is not None:
