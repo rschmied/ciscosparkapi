@@ -8,12 +8,31 @@ from ciscosparkapi import CiscoSparkAPI
 TOKEN = 'my-lengthy-spark-token-here'
 NAME = 'my-test-room-name-here'
 
+# initialize the API
 spark = CiscoSparkAPI(access_token=TOKEN)
+
+# find a 'group' room with the given NAME
 for room in spark.rooms.list(type='group'):
     if room.title == NAME:
         print(room.dumps())
         break
 
+# create a message in that room
 message = spark.messages.create(room.id, text='hello')
 print(message.dumps())
+
+
+# define a callback in case we get throttled
+def cb(sleep_time):
+    print('we should sleep (%d)' % sleep_time)
+    sleep(sleep_time/10)
+    return True
+
+# pass the callback into the API
+spark.session.ratelimit_callback = cb
+
+# create a lot of users in the room from above
+for m in 100 * ['me@home.net', 'user@somewhere.com', 'santa@northpole.org']:
+    spark.memberships.create(room.id, personEmail=m)
+    print('.')
 
