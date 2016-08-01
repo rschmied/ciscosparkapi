@@ -1,6 +1,6 @@
 """Spark - Rooms API - wrapper classes."""
 
-
+from collections import OrderedDict
 from ciscosparkapi.exceptions import ciscosparkapiException
 from ciscosparkapi.helperfunc import utf8
 from ciscosparkapi.restsession import RestSession
@@ -17,7 +17,7 @@ _DOCSTRINGS = ['Room ID', 'date created, ISO8601', '"group" or "direct"',
 class Room(SparkBaseObject):
     """Cisco Spark Room Object"""
 
-    _API = dict(zip(_ATTRIBUTES, _DOCSTRINGS))
+    _API = OrderedDict(zip(_ATTRIBUTES, _DOCSTRINGS))
 
     def __init__(self, arg=None):
         super(Room, self).__init__(arg)
@@ -144,7 +144,7 @@ class RoomsAPI(object):
                 value = utf8(value)
             put_data[utf8(param)] = value
         # API request
-        json_room_obj = self.session.put('rooms/%s' % roomId, put_data)
+        json_room_obj = self.session.put('rooms/' + roomId, put_data)
         # Return a Room object created from the response JSON data
         return Room(json_room_obj)
 

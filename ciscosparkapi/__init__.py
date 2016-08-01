@@ -2,6 +2,7 @@ import exceptions
 from restsession import RestSession
 from api.rooms import Room, RoomsAPI
 from api.messages import Message, MessagesAPI
+from api.memberships import Membership, MembershipsAPI
 
 
 class CiscoSparkAPI(object):
@@ -19,6 +20,7 @@ class CiscoSparkAPI(object):
         # Setup Spark API wrappers
         self.rooms = RoomsAPI(self.session)
         self.messages = MessagesAPI(self.session)
+        self.memberships = MembershipsAPI(self.session)
 
     @property
     def access_token(self):

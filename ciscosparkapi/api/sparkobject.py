@@ -1,5 +1,5 @@
 import json
-
+from collections import OrderedDict
 
 def _priv(item):
     return '_' + item
@@ -41,11 +41,11 @@ class SparkBaseObject(object):
                 if hasattr(self.__class__, _priv(key)):
                     setattr(self, _priv(key), value)
                 else:
-                    raise Exception, '%s: unknown attribute!' % key
+                    raise Exception, ('<%s>: unknown attribute!' % key)
 
     def dumps(self):
         """ dumps the Spark object as JSON"""
-        data = dict()
+        data = OrderedDict()
         for item in self._API.keys():
             d = getattr(self, _priv(item), None)
             if d is not None:
