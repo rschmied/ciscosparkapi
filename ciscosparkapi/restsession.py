@@ -19,12 +19,13 @@ ERC = {
 }
 
 # Spark API responds with:
-# Response Code [429] - The number of allowed requests is exceeded.  
+# Response Code [429] - The number of allowed requests is exceeded.
 # Please try your request later
 _API_THROTTLE_STATUS_CODE = 429
 
 # if API throttling occurs, how much time to wait by default?
-_DEFAULT_BACKOFF_TIME = 300
+# given in the n-th Fibonacci number (9th = 34s)
+_DEFAULT_BACKOFF = 9
 
 
 def _validate_base_url(base_url):
@@ -46,6 +47,26 @@ def _extract_and_parse_json(response):
     return response.json()
 
 
+def _fib():
+    """a Fibonacci generator"""
+    a,b = 0,1
+    while True:
+        yield a
+        a, b = b, a + b
+
+
+def fib(n):
+    """give the n-th Fibonacci number"""
+    f = _fib()
+    counter = 0
+    for i in f:
+        if counter < n:
+            counter += 1
+        else:
+            break
+    return i
+
+
 class RestSession(object):
 
     def __init__(self, access_token, base_url=DEFAULT_API_URL, timeout=None):
@@ -56,6 +77,7 @@ class RestSession(object):
         self._timeout = None
         self._last_response = None
         self._ratelimit_callback = None
+        self._ratelimit_step = _DEFAULT_BACKOFF
         self.update_headers({'Authorization': 'Bearer ' + access_token,
                              'Content-type': 'application/json;charset=utf-8'})
         self.timeout = timeout
@@ -77,6 +99,12 @@ class RestSession(object):
 
             if the callback returns True then the request is attempted again
             if the callback returns False then a ciscosparkapiException is raised
+
+            There's two ways to back off:
+            - server sends 'Retry-After' header, we can use that time
+            - if no Retry-After is sent, we apply a fibonacci sequence and increase
+              the wait. The class remembers the last 'step' and for every successful
+              response the step is decreased until it reaches the _DEFAULT_BACKOFF step
         """
 
         # make the response code a list if it's just an int
@@ -91,19 +119,26 @@ class RestSession(object):
 
         done = False
         while not done:
+            done = True
             r = self._req_session.request(method, url, **kwargs)
+            # was rate limiting in effect?
             if r.status_code ==  _API_THROTTLE_STATUS_CODE:
+                # does the server respond with a rate-limit header?
                 retry_after = int(r.headers.get('Retry-After', 0))
                 if retry_after > 0:
                     sleep_time = retry_after
+                    self._ratelimit_step = _DEFAULT_BACKOFF
                 else:
-                    sleep_time = _DEFAULT_BACKOFF_TIME
+                    sleep_time = fib(self._ratelimit_step)
+                # has a callback been configured?
+                # if yes, call it and see if we should try again
                 if self._ratelimit_callback is not None:
                     done = not self._ratelimit_callback(sleep_time)
-                else:
-                    done = True
+                    self._ratelimit_step += 1
             else:
-                done = True
+                # it did work, reduce the backoff step, if above threshold
+                if self._ratelimit_step > _DEFAULT_BACKOFF:
+                    self._ratelimit_step -= 1
         self._check_response_code(r, ercList)
         return r
 
