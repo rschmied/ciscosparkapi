@@ -41,7 +41,7 @@ class SparkBaseObject(object):
                 if hasattr(self.__class__, _priv(key)):
                     setattr(self, _priv(key), value)
                 else:
-                    raise Exception, '%s: unknown attribute!' % key
+                    raise Exception, ('<%s>: unknown attribute!' % key)
 
     def dumps(self):
         """ dumps the Spark object as JSON"""
