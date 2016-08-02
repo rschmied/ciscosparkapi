@@ -49,7 +49,7 @@ def _extract_and_parse_json(response):
 
 def _fib():
     """a Fibonacci generator"""
-    a,b = 0,1
+    a, b = 0, 1
     while True:
         yield a
         a, b = b, a + b
@@ -82,15 +82,6 @@ class RestSession(object):
                              'Content-type': 'application/json;charset=utf-8'})
         self.timeout = timeout
 
-
-    def _check_response_code(self, response, erc):
-        self._last_response = deepcopy(response)
-
-        if not response.status_code in erc:
-            raise SparkApiError(response.status_code,
-                                request=response.request,
-                                response=response)
-
     def _req_wrapper(self, method, url, erc, **kwargs):
         """ this wraps the actual request. If it gets throttled (429) 
             then there's multiple options:
@@ -102,27 +93,19 @@ class RestSession(object):
 
             There's two ways to back off:
             - server sends 'Retry-After' header, we can use that time
-            - if no Retry-After is sent, we apply a fibonacci sequence and increase
+            - if no Retry-After is sent, we apply a Fibonacci sequence and increase
               the wait. The class remembers the last 'step' and for every successful
               response the step is decreased until it reaches the _DEFAULT_BACKOFF step
+
+            The 'sleep time' is reported to the callback (if configured).
         """
-
-        # make the response code a list if it's just an int
-        if isinstance(erc, int):
-            ercList = list((erc,))
-        else:
-            ercList = erc
-
-        # if 429 (API throttling) is in list, remove it
-        if _API_THROTTLE_STATUS_CODE in ercList:
-            ercList.remove(_API_THROTTLE_STATUS_CODE)
 
         done = False
         while not done:
             done = True
             r = self._req_session.request(method, url, **kwargs)
             # was rate limiting in effect?
-            if r.status_code ==  _API_THROTTLE_STATUS_CODE:
+            if r.status_code == _API_THROTTLE_STATUS_CODE:
                 # does the server respond with a rate-limit header?
                 retry_after = int(r.headers.get('Retry-After', 0))
                 if retry_after > 0:
@@ -136,10 +119,16 @@ class RestSession(object):
                     done = not self._ratelimit_callback(sleep_time)
                     self._ratelimit_step += 1
             else:
-                # it did work, reduce the backoff step, if above threshold
+                # no throttling: reduce the backoff step, if above threshold
                 if self._ratelimit_step > _DEFAULT_BACKOFF:
                     self._ratelimit_step -= 1
-        self._check_response_code(r, ercList)
+
+        # check response code
+        self._last_response = deepcopy(r)
+        if not r.status_code == erc:
+            raise SparkApiError(r.status_code,
+                                request=r.request,
+                                response=r)
         return r
 
     @property
@@ -195,9 +184,9 @@ class RestSession(object):
         erc = kwargs.pop('erc', ERC['GET'])
         _raise_if_extra_kwargs(kwargs)
         # API request
-        response = self._req_wrapper('GET', abs_url, erc, 
-                                         params=params,
-                                         timeout=timeout)
+        response = self._req_wrapper('GET', abs_url, erc,
+                                     params=params,
+                                     timeout=timeout)
         # Process response
         return _extract_and_parse_json(response)
 
@@ -212,8 +201,8 @@ class RestSession(object):
         _raise_if_extra_kwargs(kwargs)
         # API request - get first page
         response = self._req_wrapper('GET', abs_url, erc,
-                                         params=params,
-                                         timeout=timeout)
+                                     params=params,
+                                     timeout=timeout)
         while True:
             # Process response - Yield page's JSON data
             yield _extract_and_parse_json(response)
@@ -221,7 +210,8 @@ class RestSession(object):
             if response.links.get('next'):
                 next_url = response.links.get('next').get('url')
                 # API request - get next page
-                response = self._req_wrapper('GET', next_url, erc, timeout=timeout)
+                response = self._req_wrapper(
+                    'GET', next_url, erc, timeout=timeout)
             else:
                 raise StopIteration
 
@@ -252,9 +242,9 @@ class RestSession(object):
         erc = kwargs.pop('erc', ERC['POST'])
         _raise_if_extra_kwargs(kwargs)
         # API request
-        response = self._req_wrapper('POST', abs_url, erc, 
-                                          json=json_dict,
-                                          timeout=timeout)
+        response = self._req_wrapper('POST', abs_url, erc,
+                                     json=json_dict,
+                                     timeout=timeout)
         # Process response
         return _extract_and_parse_json(response)
 
@@ -268,9 +258,9 @@ class RestSession(object):
         erc = kwargs.pop('erc', ERC['PUT'])
         _raise_if_extra_kwargs(kwargs)
         # API request
-        response = self._req_wrapper('PUT', abs_url, erc, 
-                                         json=json_dict,
-                                         timeout=timeout)
+        response = self._req_wrapper('PUT', abs_url, erc,
+                                     json=json_dict,
+                                     timeout=timeout)
         # Process response
         return _extract_and_parse_json(response)
 
