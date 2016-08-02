@@ -59,6 +59,6 @@ class SparkBaseObject(object):
         assert isinstance(input, str)
         try:
             data = json.loads(input)
-            self.__copy__(data)
         except ValueError:
             raise Exception, 'invalid JSON'
+        self.__copy__(data)
