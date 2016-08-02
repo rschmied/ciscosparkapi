@@ -108,7 +108,7 @@ class MembershipsAPI(object):
         # API request
         # one could argue that 409 is a valid resonse status_code
         # (meaning 'user already in room')
-        json_membership_obj = self.session.post(_API_URI, params, erc=[200])
+        json_membership_obj = self.session.post(_API_URI, params)
         # Return a Membership object created from the response JSON data
         if self.session.last_response.status_code == 200:
             return Membership(json_membership_obj)
