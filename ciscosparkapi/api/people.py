@@ -65,14 +65,9 @@ class PeopleAPI(object):
         Raises:
             SparkApiError: If the list request fails.
         """
-        # Process args
-        for k, v in kwargs.items():
-            if isinstance(v, basestring):
-                kwargs['k'] = utf8(v)
-            if isinstance(value, datetime):
-                value = sparkISO8601(value)
         # API request - get items
-        items = self.session.get_items(_API_ENTRY_SUFFIX, **kwargs)
+        querylist = ['email', 'displayName', 'max']
+        items = self.session.get_items(_API_ENTRY_SUFFIX, querylist, **kwargs)
         # Yield message objects created from the returned items JSON objects
         for item in items:
             yield Person(item)
@@ -91,15 +86,11 @@ class PeopleAPI(object):
         Returns:
             Person object
         """
-        # Process args
-        for k, v in kwargs.items():
-            if isinstance(v, basestring):
-                kwargs['k'] = utf8(v)
-            if isinstance(value, datetime):
-                value = sparkISO8601(value)
         # API request
+        kwargs['personId'] = personId
+        querylist = ['personId']
         json_person_obj = self.session.get(
-            '%s/%s' % (_API_ENTRY_SUFFIX, personId), erc=[200, 404], **kwargs)
+            '%s/%s' % (_API_ENTRY_SUFFIX, personId), querylist, erc=[200, 404], **kwargs)
         if self.session.last_response.status_code == 200:
             # Return a Room object created from the response JSON data
             return Person(json_person_obj)

@@ -3,6 +3,7 @@ from restsession import RestSession
 from api.rooms import Room, RoomsAPI
 from api.messages import Message, MessagesAPI
 from api.memberships import Membership, MembershipsAPI
+from api.people import Person, PeopleAPI
 
 
 class CiscoSparkAPI(object):
@@ -21,6 +22,7 @@ class CiscoSparkAPI(object):
         self.rooms = RoomsAPI(self.session)
         self.messages = MessagesAPI(self.session)
         self.memberships = MembershipsAPI(self.session)
+        self.people = PeopleAPI(self.session)
 
     @property
     def access_token(self):
