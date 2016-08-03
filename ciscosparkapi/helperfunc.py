@@ -19,11 +19,14 @@ def sparkISO8601(dt):
         note that all timestamps are assumed to be UTC
     """
     assert isinstance(dt, datetime)
-    return dt.strftime('%Y-%m-%dT%H:%M:%S.000Z')
+    return utf8(dt.strftime('%Y-%m-%dT%H:%M:%S.000Z'))
 
 
 def sparkParseTime(string):
     """ return a datetime.datetime object from the given string
         note that all timestamps are assumed to be UTC
+    
+        Returns:
+            datetime.datetime object
     """
     return parser.parse(string).replace(tzinfo=None)
