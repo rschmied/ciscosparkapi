@@ -35,6 +35,9 @@ class Membership(SparkBaseObject):
 
     _API = OrderedDict(zip(_API_KEYS, _API_ATTRS))
 
+    def __str__(self):
+        return '(%s is member of %s)' % (self.personDisplayName, self.roomId)
+
     def __init__(self, arg=None):
         super(Membership, self).__init__(arg)
 
@@ -47,12 +50,14 @@ class MembershipsAPI(object):
         super(MembershipsAPI, self).__init__()
         self.session = session
 
-    def list(self, **query_params):
+    def list(self, **kwargs):
         """List memberships.
 
-        roomId is mandatory.
-
-        By default, lists rooms to which the authenticated user belongs.
+        Lists all room memberships. By default, lists memberships for 
+        rooms to which the authenticated user belongs.
+        Use query parameters to filter the response.
+        Use roomId to list memberships for a room, by ID.
+        Use either personId or personEmail to filter the results.
 
         This method supports Cisco Spark's implmentation of RFC5988 Web Linking
         to provide pagination support.  It returns an iterator that
@@ -60,7 +65,7 @@ class MembershipsAPI(object):
         automatically and efficiently request the additional 'pages' of
         responses from Spark as needed until all responses have been exhausted.
 
-        **query_params:
+        **kwargs:
             roomId (str): List memberships for a room, by ID.
             personId (str): list membership for this person's ID
             personEmail (str): list membership for this person's email
@@ -72,16 +77,8 @@ class MembershipsAPI(object):
         Raises:
             SparkApiError: If the list request fails.
         """
-
-        params = dict()
-        # Process query_param keyword arguments
-        if query_params:
-            for param, value in query_params.items():
-                if isinstance(value, basestring):
-                    value = utf8(value)
-                params[utf8(param)] = value
-        # API request - get items
-        items = self.session.get_items(_API_ENTRY_SUFFIX, params=params)
+        apiattr = ['roomId', 'personId', 'personEmail', 'max']
+        items = self.session.get_items(_API_ENTRY_SUFFIX, apiattr, **kwargs)
         # Yield membership objects created from the returned items JSON objects
         for item in items:
             yield Membership(item)
@@ -107,23 +104,95 @@ class MembershipsAPI(object):
             Membership object or None if the user is already member of the room
         """
 
+        # process args
         assert isinstance(roomId, basestring) and len(roomId) > 0
-        params = dict()
-        params[u'roomId'] = utf8(roomId)
+        kwargs['roomId'] = roomId
 
-        # Process args
-        for k, v in kwargs.items():
-            if isinstance(v, basestring):
-                params[k] = utf8(v)
-            else:
-                params[k] = v
-
+        apiattr = ['roomId', 'personId', 'personEmail', 'isModerator']
         # API request
-        # one could argue that 409 is a valid resonse status_code
+        # 409 is a valid resonse status_code
         # (meaning 'user already in room')
-        json_membership_obj = self.session.post(_API_ENTRY_SUFFIX, params)
+        json_membership_obj = self.session.post(
+            _API_ENTRY_SUFFIX, apiattr, erc=[200, 409], **kwargs)
         # Return a Membership object created from the response JSON data
         if self.session.last_response.status_code == 200:
             return Membership(json_membership_obj)
         else:
             return None
+
+    def details(self, membershipId, **kwargs):
+        """Get membership details.
+
+        Get details for a membership by ID.
+        Specify the membership ID in the membershipId URI parameter.
+
+        Args:
+            membershipId(string): The membership Id
+
+        Raises:
+            SparkApiError: If the create operation fails.
+
+        Returns:
+            Membership object or None if the user is not a member of the room
+        """
+
+        # process args
+        assert isinstance(membershipId, basestring) and len(membershipId) > 0
+        kwargs['membershipId'] = membershipId
+        apiattr = ['membershipId']
+        # API request
+        return Membership(self.session.get(_API_ENTRY_SUFFIX, apiattr, **kwargs))
+
+    def update(self, membershipId, isModerator, **kwargs):
+        """Updates properties for a membership by ID.
+
+        Specify the membership ID in the membershipId URI parameter.
+
+        Args:
+            membershipId (string): The membership Id
+            isModerator (bool): set to True to make the person a room moderator
+
+        Raises:
+            SparkApiError: If the create operation fails.
+
+        Returns:
+            Membership object or None if the user is not a member of the room
+        """
+
+        # process args
+        assert isinstance(membershipId, basestring) and len(membershipId) > 0
+        assert isinstance(isModerator, bool)
+
+        kwargs['isModerator'] = isModerator
+        apiattr = ['isModerator']
+        # API request
+        # 409 is a valid resonse status_code
+        # (meaning 'user already in room')
+        json_membership_obj = self.session.put(
+            '/'.join((_API_ENTRY_SUFFIX, membershipId), apiattr, **kwargs))
+        # Return a Membership object created from the response JSON data
+        return Membership(json_membership_obj)
+
+    def delete(self, membershipId, **kwargs):
+        """Deletes a membership by ID.
+
+        Specify the membership ID in the membershipId URI parameter.
+
+        Args:
+            membershipId (string): The membership Id
+
+        Raises:
+            SparkApiError: If the create operation fails.
+
+        Returns:
+            Nothing
+        """
+
+        # process args
+        assert isinstance(membershipId, basestring) and len(membershipId) > 0
+        kwargs['membershipId'] = membershipId
+        apiattr = ['membershipId']
+        # API request
+        # 409 is a valid resonse status_code
+        # (meaning 'user already in room')
+        self.session.delete(_API_ENTRY_SUFFIX, apiattr, **kwargs)
