@@ -5,6 +5,8 @@ import urlparse
 import requests
 from .exceptions import ciscosparkapiException, SparkApiError
 from copy import deepcopy
+from datetime import datetime
+from ciscosparkapi.helperfunc import sparkISO8601, utf8
 
 
 # Default api.ciscospark.com base URL
@@ -38,9 +40,32 @@ def _validate_base_url(base_url):
         raise ciscosparkapiException(error_message)
 
 
-def _raise_if_extra_kwargs(kwargs):
-    if kwargs:
-        raise TypeError("Unexpected **kwargs: %r" % kwargs)
+def _process_args(what, apiattr, args):
+    """ make sure the arguments have the proper type / encoding
+        also move args in the apiattr into a separate dict
+        which will be passed as the 'json' parameter to the request
+    """
+
+    data = dict()
+    for k, v in args.items():
+        if isinstance(v, basestring):
+            args[k] = utf8(v)
+        elif isinstance(v, datetime):
+            args[k] = sparkISO8601(v)
+        else:
+            pass
+        if k in apiattr:
+            v = args.pop(k)
+            data[k] = v
+
+    if len(data) > 0:
+        if what in ['POST', 'PUT']:
+            args['json'] = data
+        elif what in ['GET', 'DELETE']:
+            args['params'] = data
+        else:
+            raise ValueError("Unexpected method %r" % what)
+    return args
 
 
 def _extract_and_parse_json(response):
@@ -82,7 +107,7 @@ class RestSession(object):
                              'Content-type': 'application/json;charset=utf-8'})
         self.timeout = timeout
 
-    def _req_wrapper(self, method, url, erc, **kwargs):
+    def _req_wrapper(self, method, url, erc, apiattr, **kwargs):
         """ this wraps the actual request. If it gets throttled (429) 
             then there's multiple options:
             - no callback defined: it just errors out with ciscosparkapiException
@@ -99,6 +124,21 @@ class RestSession(object):
 
             The 'sleep time' is reported to the callback (if configured).
         """
+
+        # make the response code a list if it's just an int
+        if isinstance(erc, int):
+            ercList = list((erc,))
+        elif: isinstance(erc, list):
+            pass
+        else
+            raise TypeError('unexpected response code type <%r>' % erc)
+
+        # if 429 (API throttling) is in list, remove it
+        if _API_THROTTLE_STATUS_CODE in ercList:
+            ercList.remove(_API_THROTTLE_STATUS_CODE)
+
+        # ensure proper encoding and parameter handling
+        kwargs = _process_args(method, apiattr, kwargs)
 
         done = False
         while not done:
@@ -125,7 +165,7 @@ class RestSession(object):
 
         # check response code
         self._last_response = deepcopy(r)
-        if not r.status_code == erc:
+        if not r.status_code in ercList:
             raise SparkApiError(r.status_code,
                                 request=r.request,
                                 response=r)
@@ -174,35 +214,8 @@ class RestSession(object):
     def urljoin(self, suffix_url):
         return urlparse.urljoin(self.base_url, suffix_url)
 
-    def get(self, url, params=None, **kwargs):
-        # Process args
-        assert isinstance(url, basestring)
-        assert params is None or isinstance(params, dict)
-        abs_url = self.urljoin(url)
-        # Process kwargs
-        timeout = kwargs.pop('timeout', self.timeout)
-        erc = kwargs.pop('erc', ERC['GET'])
-        _raise_if_extra_kwargs(kwargs)
-        # API request
-        response = self._req_wrapper('GET', abs_url, erc,
-                                     params=params,
-                                     timeout=timeout)
-        # Process response
-        return _extract_and_parse_json(response)
-
-    def get_pages(self, url, params=None, **kwargs):
-        # Process args
-        assert isinstance(url, basestring)
-        assert params is None or isinstance(params, dict)
-        abs_url = self.urljoin(url)
-        # Process kwargs
-        timeout = kwargs.pop('timeout', self.timeout)
-        erc = kwargs.pop('erc', ERC['GET'])
-        _raise_if_extra_kwargs(kwargs)
-        # API request - get first page
-        response = self._req_wrapper('GET', abs_url, erc,
-                                     params=params,
-                                     timeout=timeout)
+    def get_pages(self, url, apiattr, **kwargs):
+        response = self._process('GET', url, apiattr, **kwargs)
         while True:
             # Process response - Yield page's JSON data
             yield _extract_and_parse_json(response)
@@ -210,14 +223,13 @@ class RestSession(object):
             if response.links.get('next'):
                 next_url = response.links.get('next').get('url')
                 # API request - get next page
-                response = self._req_wrapper(
-                    'GET', next_url, erc, timeout=timeout)
+                response = self._process('GET', next_url, apiattr, **kwargs)
             else:
                 raise StopIteration
 
-    def get_items(self, url, params=None, **kwargs):
+    def get_items(self, url, apiattr, **kwargs):
         # Get iterator for pages of JSON data
-        pages = self.get_pages(url, params=params, **kwargs)
+        pages = self.get_pages(url, apiattr, **kwargs)
         # Process pages
         for json_page in pages:
             # Process each page of JSON data yielding the individual JSON
@@ -236,46 +248,22 @@ class RestSession(object):
                                 % json_page
                 raise ciscosparkapiException(error_message)
 
-    def post(self, url, json_dict, **kwargs):
+    def _process(self, what, url, apiattr, **kwargs):
         # Process args
         assert isinstance(url, basestring)
-        assert isinstance(json_dict, dict)
+        assert isinstance(apiattr, list)
         abs_url = self.urljoin(url)
-        # Process kwargs
-        timeout = kwargs.pop('timeout', self.timeout)
-        erc = kwargs.pop('erc', ERC['POST'])
-        _raise_if_extra_kwargs(kwargs)
-        # API request
-        response = self._req_wrapper('POST', abs_url, erc,
-                                     json=json_dict,
-                                     timeout=timeout)
-        # Process response
-        return _extract_and_parse_json(response)
+        erc = kwargs.pop('erc', ERC[what])
+        return self._req_wrapper(what, abs_url, erc, apiattr, **kwargs)
 
-    def put(self, url, json_dict, **kwargs):
-        # Process args
-        assert isinstance(url, basestring)
-        assert isinstance(json_dict, dict)
-        abs_url = self.urljoin(url)
-        # Process kwargs
-        timeout = kwargs.pop('timeout', self.timeout)
-        erc = kwargs.pop('erc', ERC['PUT'])
-        _raise_if_extra_kwargs(kwargs)
-        # API request
-        response = self._req_wrapper('PUT', abs_url, erc,
-                                     json=json_dict,
-                                     timeout=timeout)
-        # Process response
-        return _extract_and_parse_json(response)
+    def get(self, url, apiattr, **kwargs):
+        return _extract_and_parse_json(self._process('GET', url, apiattr, **kwargs))
 
-    def delete(self, url, **kwargs):
-        # Process args
-        assert isinstance(url, basestring)
-        abs_url = self.urljoin(url)
-        # Process kwargs
-        timeout = kwargs.pop('timeout', self.timeout)
-        erc = kwargs.pop('erc', ERC['DELETE'])
-        _raise_if_extra_kwargs(kwargs)
-        # API request
-        response = self._req_wrapper('DELETE', abs_url, erc, timeout=timeout)
-        # Process response
+    def post(self, url, apiattr, **kwargs):
+        return _extract_and_parse_json(self._process('POST', url, apiattr, **kwargs))
+
+    def put(self, url, apiattr, **kwargs):
+        return _extract_and_parse_json(self._process('PUT', url, apiattr, **kwargs))
+
+    def delete(self, url, apiattr, **kwargs):
+        return _extract_and_parse_json(self._process('DELETE', url, apiattr, **kwargs))
