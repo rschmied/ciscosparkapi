@@ -5,19 +5,31 @@ from ciscosparkapi.exceptions import ciscosparkapiException
 from ciscosparkapi.helperfunc import utf8
 from ciscosparkapi.restsession import RestSession
 from ciscosparkapi.api.sparkobject import SparkBaseObject
+from datetime import datetime
 
-
-_ATTRIBUTES = ['id', 'created', 'type', 'title',
-               'isLocked', 'lastActivity', 'teamId']
-_DOCSTRINGS = ['Room ID', 'date created, ISO8601', '"group" or "direct"',
-               'title of the room', 'true or false', 'date of last activity, ISO8601',
-               'team ID of the room']
+_API_KEYS = ['id',
+             'created',
+             'type',
+             'title',
+             'isLocked',
+             'lastActivity',
+             'teamId'
+             ]
+_API_ATTRS = [('Room ID (string)', basestring),
+              ('date created, ISO8601 (string)', datetime),
+              ('"group" or "direct" (string)', basestring),
+              ('title of the room (string)', basestring),
+              ('true or false (bool)', bool),
+              ('date of last activity, ISO8601 (string)', datetime),
+              ('team ID of the room (string)', basestring),
+              ]
+_API_ENTRY_SUFFIX = 'rooms'
 
 
 class Room(SparkBaseObject):
     """Cisco Spark Room Object"""
 
-    _API = OrderedDict(zip(_ATTRIBUTES, _DOCSTRINGS))
+    _API = OrderedDict(zip(_API_KEYS, _API_ATTRS))
 
     def __init__(self, arg=None):
         super(Room, self).__init__(arg)
@@ -70,7 +82,7 @@ class RoomsAPI(object):
                     value = utf8(value)
                 params[utf8(param)] = value
         # API request - get items
-        items = self.session.get_items('rooms', params=params)
+        items = self.session.get_items(_API_ENTRY_SUFFIX, params=params)
         # Yield Room objects created from the returned items JSON objects
         for item in items:
             yield Room(item)
@@ -95,7 +107,7 @@ class RoomsAPI(object):
         if teamId:
             post_data[u'teamId'] = utf8(teamId)
         # API request
-        json_room_obj = self.session.post('rooms', json=post_data)
+        json_room_obj = self.session.post(_API_ENTRY_SUFFIX, json=post_data)
         # Return a Room object created from the response JSON data
         return Room(json_room_obj)
 
@@ -111,7 +123,7 @@ class RoomsAPI(object):
         # Process args
         assert isinstance(roomId, basestring)
         # API request
-        json_room_obj = self.session.get('rooms/' + roomId)
+        json_room_obj = self.session.get(_API_ENTRY_SUFFIX / + roomId)
         # Return a Room object created from the response JSON data
         return Room(json_room_obj)
 
@@ -144,7 +156,8 @@ class RoomsAPI(object):
                 value = utf8(value)
             put_data[utf8(param)] = value
         # API request
-        json_room_obj = self.session.put('rooms/' + roomId, put_data)
+        json_room_obj = self.session.put(
+            _API_ENTRY_SUFFIX / + roomId, put_data)
         # Return a Room object created from the response JSON data
         return Room(json_room_obj)
 
@@ -160,4 +173,4 @@ class RoomsAPI(object):
         # Process args
         assert isinstance(roomId, basestring)
         # API request
-        self.session.delete('rooms/' + roomId)
+        self.session.delete(_API_ENTRY_SUFFIX / + roomId)

@@ -5,21 +5,35 @@ from ciscosparkapi.exceptions import ciscosparkapiException
 from ciscosparkapi.helperfunc import utf8, sparkISO8601
 from ciscosparkapi.restsession import RestSession
 from ciscosparkapi.api.sparkobject import SparkBaseObject
+from datetime import datetime
 
 
-_ATTRIBUTES = ['id', 'roomId', 'personId', 'personEmail',
-               'personDisplayName', 'isModerator', 'isMonitor', 'created']
-_DOCSTRINGS = ['Membership ID (str)',  'Room ID (str)', 'ID of the member (str)', 
-               'email of member (str)', 'display name of member (str)',
-               'is the member a moderator? (bool)', 'monitor, what does this? (bool)',
-               'date created, ISO8601 (str, ISO8601 date)', ]
+_API_KEYS = ['id',
+             'created',
+             'roomId',
+             'personId',
+             'personEmail',
+             'personDisplayName',
+             'isModerator',
+             'isMonitor'
+             ]
+_API_ATTRS = [('Membership ID (string)', basestring),
+              ('date created, ISO8601 (str, ISO8601 date)', datetime),
+              ('Room ID (string)', basestring),
+              ('ID of the member (string)', basestring),
+              ('email of member (string)', basestring),
+              ('display name of member (string)', basestring),
+              ('is the member a moderator? (bool)', bool),
+              ('monitor, what does this? (bool)', bool)
+              ]
 
-_API_URI = 'memberships'
+_API_ENTRY_SUFFIX = 'memberships'
+
 
 class Membership(SparkBaseObject):
     """Cisco Spark Membership Object"""
 
-    _API = OrderedDict(zip(_ATTRIBUTES, _DOCSTRINGS))
+    _API = OrderedDict(zip(_API_KEYS, _API_ATTRS))
 
     def __init__(self, arg=None):
         super(Membership, self).__init__(arg)
@@ -67,11 +81,10 @@ class MembershipsAPI(object):
                     value = utf8(value)
                 params[utf8(param)] = value
         # API request - get items
-        items = self.session.get_items(_API_URI, params=params)
+        items = self.session.get_items(_API_ENTRY_SUFFIX, params=params)
         # Yield membership objects created from the returned items JSON objects
         for item in items:
             yield Membership(item)
-
 
     def create(self, roomId, **kwargs):
         """Creates a membership.
@@ -108,7 +121,7 @@ class MembershipsAPI(object):
         # API request
         # one could argue that 409 is a valid resonse status_code
         # (meaning 'user already in room')
-        json_membership_obj = self.session.post(_API_URI, params)
+        json_membership_obj = self.session.post(_API_ENTRY_SUFFIX, params)
         # Return a Membership object created from the response JSON data
         if self.session.last_response.status_code == 200:
             return Membership(json_membership_obj)
