@@ -223,8 +223,12 @@ class RestSession(object):
             # Process each page of JSON data yielding the individual JSON
             # objects contained within the top level 'items' array
             assert isinstance(json_page, dict)
-            items = json_page.get(u'items')
-            if items:
+            # sometimes there's an empty list returned
+            # I guess this should not happen server side, but if there's
+            # a lengthy list then the last page can have zero elements
+            # and the 2nd to last page still has a 'next' link header
+            items = json_page.get(u'items', None)
+            if items is not None:
                 for item in items:
                     yield item
             else:
