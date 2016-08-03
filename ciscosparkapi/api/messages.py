@@ -5,19 +5,40 @@ from ciscosparkapi.exceptions import ciscosparkapiException
 from ciscosparkapi.helperfunc import utf8, sparkISO8601
 from ciscosparkapi.restsession import RestSession
 from ciscosparkapi.api.sparkobject import SparkBaseObject
+from datetime import datetime
 
 
-_ATTRIBUTES = ['id', 'created', 'roomId', 'roomType',
-               'text', 'files', 'personId', 'personEmail']
-_DOCSTRINGS = ['Message ID', 'date created, ISO8601', 'Room ID', 'group or direct', 'actual message',
-               'array of file attachment URIs', 'ID of person who sent message',
-               'email of person who sent message']
+_API_KEYS = ['id',
+             'created',
+             'roomId',
+             'roomType',
+             'text',
+             'markdown',
+             'html',
+             'files',
+             'personId',
+             'personEmail',
+             'mentionedPeople'
+             ]
+_API_ATTRS = [('Message ID (string)', basestring),
+              ('date created, ISO8601 (string)', datetime),
+              ('Room ID (string)', basestring),
+              ('"group" or "direct" (string)', basestring),
+              ('actual message as text (string)', basestring),
+              ('actual message as markdown (string)', basestring),
+              ('actual message as HTML (string)', basestring),
+              ('array of file attachment URIs (list)', list),
+              ('ID of person who sent message (string)', basestring),
+              ('email of person who sent message (string)', basestring),
+              ('people mentioned in message personId (string)', basestring)
+              ]
+_API_ENTRY_SUFFIX = 'messages'
 
 
 class Message(SparkBaseObject):
     """Cisco Spark Message Object"""
 
-    _API = OrderedDict(zip(_ATTRIBUTES, _DOCSTRINGS))
+    _API = OrderedDict(zip(_API_KEYS, _API_ATTRS))
 
     def __init__(self, arg=None):
         super(Message, self).__init__(arg)
@@ -36,7 +57,7 @@ class MessagesAPI(object):
 
         roomId is mandatory.
 
-        By default, lists rooms to which the authenticated user belongs.
+        Lists messages in the given room
 
         This method supports Cisco Spark's implmentation of RFC5988 Web Linking
         to provide pagination support.  It returns an iterator that
@@ -76,7 +97,7 @@ class MessagesAPI(object):
                     value = utf8(value)
                 params[utf8(param)] = value
         # API request - get items
-        items = self.session.get_items('messages', params=params)
+        items = self.session.get_items(_API_ENTRY_SUFFIX, params=params)
         # Yield message objects created from the returned items JSON objects
         for item in items:
             yield Message(item)
@@ -109,6 +130,6 @@ class MessagesAPI(object):
             params[u'roomId'] = utf8(roomId)
 
         # API request
-        json_message_obj = self.session.post('messages', params)
+        json_message_obj = self.session.post(_API_ENTRY_SUFFIX, params)
         # Return a Room object created from the response JSON data
         return Message(json_message_obj)
