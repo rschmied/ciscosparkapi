@@ -2,6 +2,8 @@
 
 from __future__ import print_function
 from ciscosparkapi import CiscoSparkAPI
+import datetime
+#from dateutil import parser
 
 
 # we need to know our token
@@ -25,7 +27,7 @@ print(message.dumps())
 # define a callback in case we get throttled
 def cb(sleep_time):
     print('we should sleep (%d)' % sleep_time)
-    sleep(sleep_time/10)
+    sleep(sleep_time)
     return True
 
 # pass the callback into the API
@@ -42,4 +44,24 @@ for m in 100 * ['me@home.net', 'user@somewhere.com', 'santa@northpole.org']:
             print(e)
             break
     print('.')
+
+# this needs to go into the restsession, i guess
+spark.session.ratelimit_callback = cb
+
+#cursor = parser.parse('2015-10-01 16:41:20.629000')
+cursor = datetime.datetime.utcnow()
+
+while cursor > room.created:
+    print(80*"*")
+    counter = 0
+    for message in spark.messages.list(room.id, before=cursor):
+        print('%s: %s <%s>' % (str(message.created), spark.people.details(message.personId), message.text))
+        counter =+ 1
+    if counter > 0:
+        cursor = message.created
+    else:
+        cursor = room.created
+
+
+print(json.dumps(dict(spark.session.last_response.headers), indent=4))
 
