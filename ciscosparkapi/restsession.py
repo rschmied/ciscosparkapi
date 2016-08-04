@@ -128,9 +128,9 @@ class RestSession(object):
         # make the response code a list if it's just an int
         if isinstance(erc, int):
             ercList = list((erc,))
-        elif: isinstance(erc, list):
+        elif isinstance(erc, list):
             pass
-        else
+        else:
             raise TypeError('unexpected response code type <%r>' % erc)
 
         # if 429 (API throttling) is in list, remove it
