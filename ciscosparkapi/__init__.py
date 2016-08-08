@@ -19,10 +19,10 @@ class CiscoSparkAPI(object):
         # Create API session
         self.session = RestSession(access_token, **session_args)
         # Setup Spark API wrappers
-        self.rooms = RoomsAPI(self.session)
-        self.messages = MessagesAPI(self.session)
-        self.memberships = MembershipsAPI(self.session)
-        self.people = PeopleAPI(self.session)
+        self.rooms = RoomsAPI(self)
+        self.messages = MessagesAPI(self)
+        self.memberships = MembershipsAPI(self)
+        self.people = PeopleAPI(self)
 
     @property
     def access_token(self):
