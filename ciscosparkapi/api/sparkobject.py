@@ -1,4 +1,5 @@
 import json
+import copy
 from collections import OrderedDict
 from datetime import datetime
 from ciscosparkapi.helperfunc import sparkParseTime, sparkISO8601
@@ -21,6 +22,16 @@ def _addValueFn(className, item, docstring):
     setattr(className, item, property(fnGet, fnSet, doc=docstring))
 
 
+class SparkBaseAPI(object):
+    """Base object for all API wrappers of the SparkBaseAPI"""
+
+    def __init__(self):
+        super(SparkBaseAPI, self).__init__()
+
+    def _uri_append(self, what):
+        return '/'.join((self._API_ENTRY_SUFFIX, what))
+
+
 class SparkBaseObject(object):
     """ Base object for all SparkObjects like messages and rooms """
 
@@ -38,7 +49,20 @@ class SparkBaseObject(object):
         if arg is not None:
             self.__copy__(arg)
 
+    def __items__(self):
+        data = list()
+        for item in self._API.keys():
+            d = getattr(self, _priv(item), None)
+            if d is not None:
+                data.append((item, d))
+        return data
+
     def __copy__(self, data):
+        """ copies from data into self. accepts either the same type 
+            as the instance or a dictionary.
+            If a dictionary is presented, the keys must match the 
+            current instance.
+        """
         if isinstance(data, dict):
             for key, value in data.items():
                 if hasattr(self.__class__, _priv(key)):
@@ -48,16 +72,19 @@ class SparkBaseObject(object):
                         setattr(self, _priv(key), value)
                 else:
                     raise Exception, ('<%s>: unknown attribute!' % key)
+        elif type(self) == type(data):
+            for k, v in data.__items__():
+                setattr(self, k, copy.copy(v))
+        else:
+            raise ValueError("can't copy %r into %r" % (type(data), type(self)))
 
     def dumps(self):
         """ dumps the Spark object as JSON"""
         data = OrderedDict()
-        for item in self._API.keys():
-            d = getattr(self, _priv(item), None)
-            if d is not None:
-                if type(d) == datetime:
-                    d = sparkISO8601(d)
-                data[item] = d
+        for k, v in self.__items__():
+            if type(v) == datetime:
+                v = sparkISO8601(v)
+            data[k] = v
         return json.dumps(data)
 
     def loads(self, input):
