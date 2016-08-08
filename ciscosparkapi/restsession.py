@@ -30,6 +30,21 @@ _API_THROTTLE_STATUS_CODE = 429
 _DEFAULT_BACKOFF = 9
 
 
+def _del_url_query_part(url, qp):
+    """ removes query part from url """
+    parts = urlparse.urlsplit(url)
+    query = urlparse.parse_qs(parts.query)
+    new_parts = list(parts)
+
+    try:
+       del query[qp]
+    except KeyError as e:
+       return url
+    new_parts[3] = '&'.join(["%s=%s" % (k,v[0]) for (k, v) in query.items()])
+
+    return urlparse.urlunsplit(new_parts)
+
+
 def _validate_base_url(base_url):
     parsed_url = urlparse.urlparse(base_url)
     if parsed_url.scheme and parsed_url.netloc:
@@ -124,6 +139,8 @@ class RestSession(object):
 
             The 'sleep time' is reported to the callback (if configured).
         """
+
+	#print url, kwargs
 
         done = False
         while not done:
@@ -233,8 +250,18 @@ class RestSession(object):
             # Get next page
             if response.links.get('next'):
                 next_url = response.links.get('next').get('url')
+                #
                 # API request - get next page
-                response = self._process('GET', next_url, apiattr, **kwargs)
+                # FIXME: args aren't truly passed since the Spark API
+                # returns another set of queryparms which can interfere
+                # with the ones passed in kwargs.
+                # in theory, the combined next_url and kwargs had to be
+                # linted / made unique in a way. But e.g. 'before' or
+                # 'beforeMessage' can interfere, which one takes
+                # precedence then?
+                #
+                #response = self._process('GET', next_url, apiattr, **kwargs)
+                response = self._process('GET', next_url, apiattr)
             else:
                 raise StopIteration
 

@@ -56,6 +56,36 @@ class MessagesAPI(SparkBaseAPI):
         self.api = api
 
     def list(self, room, **kwargs):
+
+        # Process args
+        assert isinstance(room, Room)
+        kwargs['roomId'] = room.id
+
+        # need to get referred message details?
+        beforeMessage = kwargs.pop('beforeMessage', None)
+        if beforeMessage:
+            assert isinstance(beforeMessage, Message)
+            kwargs['before'] = beforeMessage.created
+
+        # API request - get items
+        # 'beforeMessage' will never make it to the API
+        # as we convert it to 'before' above
+        apiattr = ['roomId', 'before', 'beforeMessage', 'max']
+
+        # need to pass max=50 (50 being the default)
+        # b/c as of Aug 7th 2016, Spark API does actually
+        # do paging properly but w/o a max parm it will
+        # return the next-link with 'max=None' (nice!)
+        # see http://devsupport.ciscospark.com/hc/requests/55389
+
+        items = self.api.session.get_items(
+            self._API_ENTRY_SUFFIX, apiattr, max=50, **kwargs)
+        for item in items:
+            message = Message(item)
+            yield message
+
+
+    def list_alternative(self, room, **kwargs):
         """List messages.
 
         room is mandatory.
@@ -108,9 +138,9 @@ class MessagesAPI(SparkBaseAPI):
         while cursor > room.created:
             counter = 0
             items = self.api.session.get_items(
-                self._API_ENTRY_SUFFIX, apiattr, before=cursor, **kwargs)
+                self._API_ENTRY_SUFFIX, apiattr, max=50, before=cursor, **kwargs)
             for item in items:
-                counter = + 1
+                counter = counter + 1
                 # Yield message objects created from the returned items JSON
                 # objects
                 message = Message(item)
