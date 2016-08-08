@@ -125,21 +125,6 @@ class RestSession(object):
             The 'sleep time' is reported to the callback (if configured).
         """
 
-        # make the response code a list if it's just an int
-        if isinstance(erc, int):
-            ercList = list((erc,))
-        elif isinstance(erc, list):
-            pass
-        else:
-            raise TypeError('unexpected response code type <%r>' % erc)
-
-        # if 429 (API throttling) is in list, remove it
-        if _API_THROTTLE_STATUS_CODE in ercList:
-            ercList.remove(_API_THROTTLE_STATUS_CODE)
-
-        # ensure proper encoding and parameter handling
-        kwargs = _process_args(method, apiattr, kwargs)
-
         done = False
         while not done:
             done = True
@@ -165,11 +150,37 @@ class RestSession(object):
 
         # check response code
         self._last_response = deepcopy(r)
-        if not r.status_code in ercList:
+        if not r.status_code in erc:
             raise SparkApiError(r.status_code,
                                 request=r.request,
                                 response=r)
         return r
+
+    def _process(self, what, url, apiattr, **kwargs):
+        """ prepare the ERC list, process the argument list
+            converting dates and strings
+        """
+        # Process args
+        assert isinstance(url, basestring)
+        assert isinstance(apiattr, list)
+        abs_url = self.urljoin(url)
+
+        # make the response code a list if it's just an int
+        erc = kwargs.pop('erc', ERC[what])
+        if isinstance(erc, int):
+            ercList = list((erc,))
+        elif isinstance(erc, list):
+            ercList = erc
+        else:
+            raise TypeError('unexpected response code type <%r>' % erc)
+
+        # if 429 (API throttling) is in list, remove it
+        if _API_THROTTLE_STATUS_CODE in ercList:
+            ercList.remove(_API_THROTTLE_STATUS_CODE)
+
+        # ensure proper encoding and parameter handling
+        kwargs = _process_args(what, apiattr, kwargs)
+        return self._req_wrapper(what, abs_url, ercList, apiattr, **kwargs)
 
     @property
     def ratelimit_callback(self):
@@ -247,14 +258,6 @@ class RestSession(object):
                 error_message = "'items' object not found in JSON data: %r" \
                                 % json_page
                 raise ciscosparkapiException(error_message)
-
-    def _process(self, what, url, apiattr, **kwargs):
-        # Process args
-        assert isinstance(url, basestring)
-        assert isinstance(apiattr, list)
-        abs_url = self.urljoin(url)
-        erc = kwargs.pop('erc', ERC[what])
-        return self._req_wrapper(what, abs_url, erc, apiattr, **kwargs)
 
     def get(self, url, apiattr, **kwargs):
         return _extract_and_parse_json(self._process('GET', url, apiattr, **kwargs))
