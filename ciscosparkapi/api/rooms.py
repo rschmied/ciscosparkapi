@@ -3,8 +3,7 @@
 from collections import OrderedDict
 from ciscosparkapi.exceptions import ciscosparkapiException
 from ciscosparkapi.helperfunc import utf8
-from ciscosparkapi.restsession import RestSession
-from ciscosparkapi.api.sparkobject import SparkBaseObject
+from ciscosparkapi.api.sparkobject import SparkBaseObject, SparkBaseAPI
 from datetime import datetime
 
 _API_KEYS = ['id',
@@ -23,7 +22,6 @@ _API_ATTRS = [('Room ID (string)', basestring),
               ('date of last activity, ISO8601 (string)', datetime),
               ('team ID of the room (string)', basestring),
               ]
-_API_ENTRY_SUFFIX = 'rooms'
 
 
 class Room(SparkBaseObject):
@@ -38,13 +36,14 @@ class Room(SparkBaseObject):
         return self.title
 
 
-class RoomsAPI(object):
+class RoomsAPI(SparkBaseAPI):
     """Spark Rooms API request wrapper."""
 
-    def __init__(self, session):
-        assert isinstance(session, RestSession)
+    _API_ENTRY_SUFFIX = 'rooms'
+
+    def __init__(self, api):
         super(RoomsAPI, self).__init__()
-        self.session = session
+        self.api = api
 
     def list(self, **kwargs):
         """List rooms.
@@ -73,7 +72,8 @@ class RoomsAPI(object):
             SparkApiError: If the list request fails.
         """
         apiparm = ['teamId', 'max,', 'type']
-        items = self.session.get_items(_API_ENTRY_SUFFIX, apiparm, **kwargs)
+        items = self.api.session.get_items(
+            self._API_ENTRY_SUFFIX, apiparm, **kwargs)
         # Yield Room objects created from the returned items JSON objects
         for item in items:
             yield Room(item)
@@ -83,9 +83,11 @@ class RoomsAPI(object):
 
         The authenticated user is automatically added as a member of the room.
 
+        Args:
+            title (string): A user-friendly name for the room.
+
         **kwargs:
-            title(string): A user-friendly name for the room.
-            teamId(string): The team ID with which this room is associated.
+            teamId (string): The team ID with which this room is associated.
 
         Raises:
             SparkApiError: If the create operation fails.
@@ -93,53 +95,70 @@ class RoomsAPI(object):
         assert isinstance(title, str) and len(title) > 0
         kwargs['title'] = title
         apiparm = ['title', 'teamId']
-        return Room(self.session.post(_API_ENTRY_SUFFIX, apiparm, **kwargs))
+        return Room(self.api.session.post(self._API_ENTRY_SUFFIX, apiparm, **kwargs))
 
-    def get(self, roomId):
+    def details(self, room, **kwargs):
         """Gets the details of a room.
 
         Args:
-            roomId(string): The roomId of the room.
+            room (Room or string): The requested room.
 
         Raises:
             SparkApiError: If the get operation fails.
         """
-        # Process args
-        assert isinstance(roomId, basestring) and len(roomId) > 0
-        kwargs['roomId'] = roomId
-        apiparm = ['roomId']
-        return Room(self.session.get(_API_ENTRY_SUFFIX, apiparm, **kwargs))
+        if isinstance(room, Room):
+            roomId = room.id
+        elif isinstance(room, basestring):
+            roomId = room
+        else:
+            raise ValueError("missing room Id")
+        apiparm = []
+        return Room(self.api.session.get(self._uri_append(roomId), apiparm, **kwargs))
 
-    def update(self, roomId, title, **kwargs):
-        """Updates details for a room.
+    def update(self, room, **kwargs):
+        """Updates details for a room. Only change of the title is
+           actually used.
 
         Args:
-            roomId (string): The roomId of the room to be updated.
-            title (string): the new title
+            room (Room or string): The room object of the room to be updated.
+
+        **kwargs:
+            title (string): only needed if room is passed as an ID
 
         Returns:
-            A Room object with the updated Spark room details.
+            A Room object with the updated details.
 
         Raises:
             SparkApiError: If the update operation fails.
         """
-        # Process args
-        assert isinstance(roomId, basestring) and len(roomId) > 0
-        assert isinstance(title, basestring) and len(title) > 0
-        kwargs['title']=title
+        if isinstance(room, Room):
+            roomId = room.id
+            kwargs['title'] = room.title
+        elif isinstance(message, basestring):
+            roomId = room
+        else:
+            raise ValueError("missing room Id")
         apiparm = ['title']
-        return Room(self.session.put('/'.join((_API_ENTRY_SUFFIX, roomId)), apiparm, **kwargs))
+        return Room(self.api.session.put(self._uri_append(roomId), apiparm, **kwargs))
 
-    def delete(self, roomId):
+    def delete(self, room, **kwargs):
         """Delete a room.
 
         Args:
-            roomId(string): The roomId of the room to be deleted.
+            room (Room or string): The room object to be deleted.
 
         Raises:
             SparkApiError: If the delete operation fails.
+
+        Returns:
+            Nothing
         """
-        assert isinstance(roomId, basestring) and len(roomId) > 0
-        kwargs['roomId']=roomId
-        apiparm=['roomId']
-        return Room(self.session.delete(_API_ENTRY_SUFFIX, apiparm, **kwargs))
+        if isinstance(room, Room):
+            roomId = room.id
+        elif isinstance(message, basestring):
+            roomId = room
+        else:
+            raise ValueError("missing room Id")
+        apiparm = ['roomId']
+        self.api.session.delete(
+            '/'.join((self._API_ENTRY_SUFFIX, roomId)), apiparm, **kwargs)

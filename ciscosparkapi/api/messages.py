@@ -3,8 +3,8 @@
 from collections import OrderedDict
 from ciscosparkapi.exceptions import ciscosparkapiException
 from ciscosparkapi.helperfunc import utf8, sparkISO8601
-from ciscosparkapi.restsession import RestSession
-from ciscosparkapi.api.sparkobject import SparkBaseObject
+from ciscosparkapi.api.rooms import RoomsAPI, Room
+from ciscosparkapi.api.sparkobject import SparkBaseObject, SparkBaseAPI
 from datetime import datetime
 
 
@@ -32,7 +32,6 @@ _API_ATTRS = [('Message ID (string)', basestring),
               ('email of person who sent message (string)', basestring),
               ('people mentioned in message personId (string)', basestring)
               ]
-_API_ENTRY_SUFFIX = 'messages'
 
 
 class Message(SparkBaseObject):
@@ -47,18 +46,19 @@ class Message(SparkBaseObject):
         return self.text
 
 
-class MessagesAPI(object):
+class MessagesAPI(SparkBaseAPI):
     """Spark Messages API request wrapper."""
 
-    def __init__(self, session):
-        assert isinstance(session, RestSession)
-        super(MessagesAPI, self).__init__()
-        self.session = session
+    _API_ENTRY_SUFFIX = 'messages'
 
-    def list(self, roomId, **kwargs):
+    def __init__(self, api):
+        super(MessagesAPI, self).__init__()
+        self.api = api
+
+    def list(self, room, **kwargs):
         """List messages.
 
-        roomId is mandatory.
+        room is mandatory.
 
         Lists messages in the given room
 
@@ -68,13 +68,16 @@ class MessagesAPI(object):
         automatically and efficiently request the additional 'pages' of
         responses from Spark as needed until all responses have been exhausted.
 
+        It also goes beyond the pages using a cursor to go back until room
+        creation time.
+
         Args:
-            roomId (string): List messages for a room, by ID.
+            room (Room): List messages for a Room object.
 
         **kwargs:
-            max(int): Limit the maximum number of messages in the response.
-            before (): List messages sent before a date and time, in datetime format
-            beforeMessage (): List messages sent before a message, by ID.
+            max (int): Limit the maximum number of messages in the response.
+            before (datetime): List messages sent before a date and time
+            beforeMessage (Message): List messages sent before a message
 
         Returns:
             A Message iterator.
@@ -83,29 +86,56 @@ class MessagesAPI(object):
             SparkApiError: If the list request fails.
         """
         # Process args
-        assert isinstance(roomId, basestring) and len(roomId) > 0
+        assert isinstance(room, Room)
+        kwargs['roomId'] = room.id
+
+        # need to get referred message details?
+        beforeMessage = kwargs.pop('beforeMessage', None)
+        if beforeMessage:
+            assert isinstance(beforeMessage, Message)
+            kwargs['before'] = beforeMessage.created
+
+        room = self.api.rooms.details(room)
 
         # API request - get items
+        # 'beforeMessage' will never make it to the API
+        # as we convert it to 'before' above
         apiattr = ['roomId', 'before', 'beforeMessage', 'max']
-        kwargs['roomId'] = roomId
-        items = self.session.get_items(_API_ENTRY_SUFFIX, apiattr, **kwargs)
-        # Yield message objects created from the returned items JSON objects
-        for item in items:
-            yield Message(item)
 
-    def create(self, **kwargs):
+        cursor = kwargs.pop('before', datetime.utcnow())
+        assert isinstance(cursor, datetime)
+
+        while cursor > room.created:
+            counter = 0
+            items = self.api.session.get_items(
+                self._API_ENTRY_SUFFIX, apiattr, before=cursor, **kwargs)
+            for item in items:
+                counter = + 1
+                # Yield message objects created from the returned items JSON
+                # objects
+                message = Message(item)
+                yield message
+            if counter > 0:
+                cursor = message.created
+            else:
+                cursor = room.created
+
+    def create(self, room=None, person=None, email=None, **kwargs):
         """Creates a message.
 
         The authenticated user is automatically added as a member of the room.
+        Either room, person or email is required
 
         Args:
-            roomId(string): The room Id
-            toPersonId(string): The ID of the recipient when sending 1:1 messages
-            toPersonEmail(string): The email of the recipient when sending 1:1 messages
-            text(string): the text (as alternatetext when Markdown or HTML is sent)
-            markdown(string): the text in Markdown
-            html(string): the text in HTML
-            files(string): attachment
+            room (Room): The room where the message should go
+            person (Person): The person of the recipient when sending 1:1 messages
+            email (string): The email of the recipient when sending 1:1 messages
+
+        **kwargs:
+            text (string): the text (as alternatetext when Markdown or HTML is sent)
+            markdown (string): the text in Markdown
+            html (string): the text in HTML
+            files (string): attachment
 
         Raises:
             SparkApiError: If the create operation fails.
@@ -113,47 +143,70 @@ class MessagesAPI(object):
         Returns:
             Message object
         """
-        # API request
-        apiattr = ['roomId', 'toPersonId', 'toPersonEmail', 'text', 'markdown', 'html', 'files']
-        # Return a Room object created from the response JSON data
-        return Message(self.session.post(_API_ENTRY_SUFFIX, apiattr, **kwargs))
 
-    def details(self, messageId, **kwargs):
+        if room:
+            assert isinstance(room, Room)
+            kwargs['roomId'] = room.id
+
+        if person:
+            assert isinstance(person, Person)
+            kwargs['toPersonId'] = person.id
+
+        if email:
+            assert isinstance(email, basestring)
+            kwargs['toPersonEmail'] = email
+
+        # API request
+        apiattr = ['roomId', 'toPersonId', 'toPersonEmail',
+                   'text', 'markdown', 'html', 'files']
+        # Return a new Message object
+        return Message(self.api.session.post(self._API_ENTRY_SUFFIX, apiattr, **kwargs))
+
+    def details(self, message, **kwargs):
         """ Shows details for a message, by message ID.
 
-            Specify the message ID in the messageId parameter in the URI.
+            Specify the ID in the message object.
 
         Args:
-            messageId (string): The message Id
+            message (Message): The message (with ID)
 
         Raises:
-            SparkApiError: If the create operation fails.
+            SparkApiError: If the details operation fails.
 
         Returns:
             Message object
         """
+
+        if isinstance(message, Message):
+            messageId = message.id
+        elif isinstance(message, basestring):
+            messageId = message
+
         # API request
         apiattr = ['messageId']
-        kwargs['messageId'] = messageId
-        # Return a Room object created from the response JSON data
-        return Message(self.session.get(_API_ENTRY_SUFFIX, apiattr, **kwargs))
+        # Return a Message object with details
+        return Message(self.api.session.get(self._uri_append(messageId), apiattr, **kwargs))
 
-    def delete(self, messageId, **kwargs):
+    def delete(self, message, **kwargs):
         """ Deletes a message, by message ID.
 
-            Specify the message ID in the messageId parameter in the URI.
+            Specify the ID in the message object.
 
         Args:
-            messageId (string): The message Id
+            message (Message): The message (with ID)
 
         Raises:
-            SparkApiError: If the create operation fails.
+            SparkApiError: If the delete operation fails.
 
         Returns:
-            Message object
+            None
         """
+
+        if isinstance(message, Message):
+            messageId = message.id
+        elif isinstance(message, basestring):
+            messageId = message
+
         # API request
         apiattr = ['messageId']
-        kwargs['messageId'] = messageId
-        # Return a Room object created from the response JSON data
-        return Message(self.session.delete(_API_ENTRY_SUFFIX, apiattr, **kwargs))
+        self.api.session.delete(self._uri_append(messageId), apiattr, **kwargs)

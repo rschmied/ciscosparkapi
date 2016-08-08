@@ -3,8 +3,7 @@
 from collections import OrderedDict
 from ciscosparkapi.exceptions import ciscosparkapiException
 from ciscosparkapi.helperfunc import utf8, sparkISO8601
-from ciscosparkapi.restsession import RestSession
-from ciscosparkapi.api.sparkobject import SparkBaseObject
+from ciscosparkapi.api.sparkobject import SparkBaseObject, SparkBaseAPI
 from datetime import datetime
 
 
@@ -27,8 +26,6 @@ _API_ATTRS = [('Membership ID (string)', basestring),
               ('monitor, what does this? (bool)', bool)
               ]
 
-_API_ENTRY_SUFFIX = 'memberships'
-
 
 class Membership(SparkBaseObject):
     """Cisco Spark Membership Object"""
@@ -42,15 +39,16 @@ class Membership(SparkBaseObject):
         super(Membership, self).__init__(arg)
 
 
-class MembershipsAPI(object):
+class MembershipsAPI(SparkBaseAPI):
     """Spark Membership API request wrapper."""
 
-    def __init__(self, session):
-        assert isinstance(session, RestSession)
-        super(MembershipsAPI, self).__init__()
-        self.session = session
+    _API_ENTRY_SUFFIX = 'memberships'
 
-    def list(self, **kwargs):
+    def __init__(self, api):
+        super(MembershipsAPI, self).__init__()
+        self.api = api
+
+    def list(self, room=None, person=None, email=None, **kwargs):
         """List memberships.
 
         Lists all room memberships. By default, lists memberships for 
@@ -65,10 +63,13 @@ class MembershipsAPI(object):
         automatically and efficiently request the additional 'pages' of
         responses from Spark as needed until all responses have been exhausted.
 
+
+        Args:
+            room (Room): List memberships for a room
+            person (Person): list membership for this person
+            email (string): list membership for this email address
+
         **kwargs:
-            roomId (str): List memberships for a room, by ID.
-            personId (str): list membership for this person's ID
-            personEmail (str): list membership for this person's email
             max(int): Limit the maximum number of memberships in the response.
 
         Returns:
@@ -77,25 +78,36 @@ class MembershipsAPI(object):
         Raises:
             SparkApiError: If the list request fails.
         """
+
+        if room:
+            assert isinstance(room, Room)
+            kwargs['roomId'] = room.id
+
+        if person:
+            assert isinstance(person, Person)
+            kwargs['toPersonId'] = person.id
+
+        if email:
+            assert isinstance(email, basestring)
+            kwargs['toPersonEmail'] = email
+
         apiattr = ['roomId', 'personId', 'personEmail', 'max']
-        items = self.session.get_items(_API_ENTRY_SUFFIX, apiattr, **kwargs)
+        items = self.api.session.get_items(
+            self._API_ENTRY_SUFFIX, apiattr, **kwargs)
         # Yield membership objects created from the returned items JSON objects
         for item in items:
             yield Membership(item)
 
-    def create(self, roomId, **kwargs):
+    def create(self, room, person, moderator=False, **kwargs):
         """Creates a membership.
 
         Creates a membership of the specified user (via id or email) to the given room.
         E.g. adds the specified user to the room.
 
         Args:
-            roomId(string): The room Id
-
-        **query_params:
-            personId(string): The ID of the member
-            personEmail(string): The email of the member
-            isModerator(bool): set to True if this person should be moderator
+            room (Room): The room
+            person (Person): the person to be added
+            moderator (bool): is this person a moderator?
 
         Raises:
             SparkApiError: If the create operation fails.
@@ -105,52 +117,59 @@ class MembershipsAPI(object):
         """
 
         # process args
-        assert isinstance(roomId, basestring) and len(roomId) > 0
-        kwargs['roomId'] = roomId
+        assert isinstance(room, Room)
+        kwargs['roomId'] = room.id
+        assert isinstance(person, Person)
+        if person.id:
+            kwargs['toPersonId'] = person.id
+        if person.email:
+            kwargs['toPersonEmail'] = person.email
+        kwargs['isModerator'] = isModerator
 
         apiattr = ['roomId', 'personId', 'personEmail', 'isModerator']
         # API request
         # 409 is a valid resonse status_code
         # (meaning 'user already in room')
-        json_membership_obj = self.session.post(
-            _API_ENTRY_SUFFIX, apiattr, erc=[200, 409], **kwargs)
+        json_membership_obj = self.api.session.post(
+            self._API_ENTRY_SUFFIX, apiattr, erc=[200, 409], **kwargs)
         # Return a Membership object created from the response JSON data
-        if self.session.last_response.status_code == 200:
+        if self.api.session.last_response.status_code == 200:
             return Membership(json_membership_obj)
         else:
             return None
 
-    def details(self, membershipId, **kwargs):
+    def details(self, membership, **kwargs):
         """Get membership details.
 
-        Get details for a membership by ID.
-        Specify the membership ID in the membershipId URI parameter.
+        Get details for a given membership.
 
         Args:
-            membershipId(string): The membership Id
+            membership (Membership): The membership object
 
         Raises:
-            SparkApiError: If the create operation fails.
+            SparkApiError: If the operation fails.
 
         Returns:
             Membership object or None if the user is not a member of the room
         """
-
         # process args
-        assert isinstance(membershipId, basestring) and len(membershipId) > 0
-        kwargs['membershipId'] = membershipId
-        apiattr = ['membershipId']
+        if isinstance(membership, Membership):
+            membershipId = membership.id
+        elif isinstance(membership, basestring):
+            membershipId = membership
+        else:
+            raise ValueError("missing membership Id")
+        apiattr = []
         # API request
-        return Membership(self.session.get(_API_ENTRY_SUFFIX, apiattr, **kwargs))
+        return Membership(self.api.session.get(self._uri_append(membershipId), apiattr, erc=[200, 404], **kwargs))
 
-    def update(self, membershipId, isModerator, **kwargs):
-        """Updates properties for a membership by ID.
+    def update(self, membership, **kwargs):
+        """Updates properties for a membership object.
 
-        Specify the membership ID in the membershipId URI parameter.
+        Only the 'isModerator' attribute can be modified. 
 
         Args:
-            membershipId (string): The membership Id
-            isModerator (bool): set to True to make the person a room moderator
+            membership (Membership): The membership object
 
         Raises:
             SparkApiError: If the create operation fails.
@@ -158,28 +177,24 @@ class MembershipsAPI(object):
         Returns:
             Membership object or None if the user is not a member of the room
         """
-
         # process args
-        assert isinstance(membershipId, basestring) and len(membershipId) > 0
-        assert isinstance(isModerator, bool)
+        if isinstance(membership, Membership):
+            membershipId = membership.id
+        elif isinstance(membership, basestring):
+            membershipId = membership
+        else:
+            raise ValueError("missing membership Id")
 
-        kwargs['isModerator'] = isModerator
+        kwargs['isModerator'] = membership.isModerator
         apiattr = ['isModerator']
         # API request
-        # 409 is a valid resonse status_code
-        # (meaning 'user already in room')
-        json_membership_obj = self.session.put(
-            '/'.join((_API_ENTRY_SUFFIX, membershipId), apiattr, **kwargs))
-        # Return a Membership object created from the response JSON data
-        return Membership(json_membership_obj)
+        return Membership(self.api.session.put(self._uri_append(membershipId), apiattr, **kwargs))
 
-    def delete(self, membershipId, **kwargs):
-        """Deletes a membership by ID.
-
-        Specify the membership ID in the membershipId URI parameter.
+    def delete(self, membership, **kwargs):
+        """Deletes a membership object.
 
         Args:
-            membershipId (string): The membership Id
+            membership (Membership): The membership object
 
         Raises:
             SparkApiError: If the create operation fails.
@@ -189,10 +204,13 @@ class MembershipsAPI(object):
         """
 
         # process args
-        assert isinstance(membershipId, basestring) and len(membershipId) > 0
-        kwargs['membershipId'] = membershipId
-        apiattr = ['membershipId']
+        if isinstance(membership, Membership):
+            membershipId = membership.id
+        elif isinstance(membership, basestring):
+            membershipId = membership
+        else:
+            raise ValueError("missing membership Id")
+        apiattr = []
         # API request
-        # 409 is a valid resonse status_code
-        # (meaning 'user already in room')
-        self.session.delete(_API_ENTRY_SUFFIX, apiattr, **kwargs)
+        self.api.session.delete(self._uri_append(
+            membershipId), apiattr, **kwargs)
